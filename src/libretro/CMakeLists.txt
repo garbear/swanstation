@@ -41,3 +41,5 @@ endif()
 if(ANDROID)
   set_target_properties(swanstation_libretro PROPERTIES OUTPUT_NAME "swanstation_libretro_android")
 endif()
+
+install(TARGETS swanstation_libretro DESTINATION ${CMAKE_INSTALL_LIBDIR})
