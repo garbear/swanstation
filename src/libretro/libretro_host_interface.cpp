@@ -352,14 +352,7 @@ void HostInterface::InitLogging()
 
 bool HostInterface::Initialize()
 {
-  /* Reset disk control info struct */
-  P_THIS->m_disk_control_info.has_sub_images      = false;
-  P_THIS->m_disk_control_info.initial_image_index = 0;
-  P_THIS->m_disk_control_info.image_index         = 0;
-  P_THIS->m_disk_control_info.image_count         = 0;
-  P_THIS->m_disk_control_info.sub_images_parent_path.clear();
-  P_THIS->m_disk_control_info.image_paths.clear();
-  P_THIS->m_disk_control_info.image_labels.clear();
+  P_THIS->m_disk_control_info = {};
 
   InitInterfaces();
   LoadSettings();
@@ -378,14 +371,7 @@ void HostInterface::Shutdown()
   if (!System::IsShutdown())
     System::Shutdown();
 
-  /* Reset disk control info struct */
-  P_THIS->m_disk_control_info.has_sub_images      = false;
-  P_THIS->m_disk_control_info.initial_image_index = 0;
-  P_THIS->m_disk_control_info.image_index         = 0;
-  P_THIS->m_disk_control_info.image_count         = 0;
-  P_THIS->m_disk_control_info.sub_images_parent_path.clear();
-  P_THIS->m_disk_control_info.image_paths.clear();
-  P_THIS->m_disk_control_info.image_labels.clear();
+  P_THIS->m_disk_control_info = {};
 }
 
 void HostInterface::ReportError(const char* message)
@@ -703,7 +689,8 @@ bool HostInterface::retro_load_game(const struct retro_game_info* game)
   // already handles an empty filename as a BIOS boot.
   if (game && game->path)
     bp->filename = game->path;
-  bp->media_playlist_index = P_THIS->m_disk_control_info.initial_image_index;
+  const uint32_t initial_index = m_disk_control_info.initial_image_index;
+  const std::string initial_path = std::move(m_disk_control_info.initial_image_path);
   bp->force_software_renderer = !m_hw_render_callback_valid;
 
   struct retro_input_descriptor desc[] = {
@@ -807,6 +794,16 @@ bool HostInterface::retro_load_game(const struct retro_game_info* game)
 
       P_THIS->m_disk_control_info.image_paths.push_back(image_path);
       P_THIS->m_disk_control_info.image_labels.push_back(std::string(image_label));
+    }
+  }
+
+  if (initial_index < m_disk_control_info.image_count &&
+      m_disk_control_info.image_paths[initial_index] == initial_path && initial_index != 0)
+  {
+    if (!DiskControlSetEjectState(true) || !DiskControlSetImageIndex(initial_index) || !DiskControlSetEjectState(false))
+    {
+      DestroySystem();
+      return false;
     }
   }
 
@@ -2328,12 +2325,11 @@ bool HostInterface::DiskControlAddImageIndex()
 
 bool HostInterface::DiskControlSetInitialImage(unsigned index, const char* path)
 {
-  /* Note: 'path' is ignored, since we cannot
-   * determine the actual set path until after
-   * content is loaded by the core emulation
-   * code (at which point it is too late to
-   * compare it with the value supplied here) */
+  if (!System::IsShutdown() || !path || !path[0])
+    return false;
+
   P_THIS->m_disk_control_info.initial_image_index = index;
+  P_THIS->m_disk_control_info.initial_image_path = path;
   return true;
 }
 
